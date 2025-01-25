@@ -268,7 +268,7 @@ config IOMMU_HELPER
 	def_bool SWIOTLB
 
 config KERNEL_MODE_NEON
-	def_bool y
+	def_bool n
 
 config FIX_EARLYCON_MEM
 	def_bool y
