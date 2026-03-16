@@ -151,7 +151,15 @@ jobs:
           else
             echo "警告：$DTS_FILE 不存在，跳过"
           fi
-
+          
+      - name: 下载正确的 raphael-pinctrl.dtsi 文件
+        working-directory: kernel
+        run: |
+          # 请将下面的 URL 替换为您确认可用的 raw 文件地址
+          curl -L -o arch/arm64/boot/dts/qcom/raphael-pinctrl.dtsi \
+            "https://raw.githubusercontent.com/crdroidandroid/android_kernel_xiaomi_sm8150/14.0-20240807/arch/arm64/boot/dts/qcom/xiaomi/overlay/raphael/raphael-pinctrl.dtsi"
+          echo "文件下载并覆盖完成。"
+          
       # 可选：输出文件前几行用于调试 (可以保留或注释掉)
       - name: 调试输出设备树文件内容
         working-directory: kernel
