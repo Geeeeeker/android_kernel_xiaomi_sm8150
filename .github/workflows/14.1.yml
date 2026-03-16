@@ -27,6 +27,7 @@ jobs:
         run: |
           sudo apt update > /dev/null
           sudo apt install -y ${{ env.PACKAGES }} > /dev/null
+
       - name: 同步仓库
         uses: actions/checkout@v4
         with:
@@ -45,6 +46,7 @@ jobs:
           mkdir -p clang &&
           curl -LSs "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/${{ env.AOSP_TOOLCHAIN_BRANCH }}-release/clang-${{ env.AOSP_CLANG_VERSION }}.tar.gz" |
           tar xz -C clang
+
       - name: 缓存ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -74,12 +76,14 @@ jobs:
           
           # 禁用 CC_WERROR
           echo "CONFIG_CC_WERROR=n" >> $DEFCONFIG
+
       - name: 配置 LXC 和 Docker 支持
         working-directory: kernel
         run: |
           DEFCONFIG="arch/arm64/configs/raphael_defconfig"
           rm -rf utils
           git clone https://github.com/tomxi1997/lxc-docker-support-for-android.git utils
+
           # 移除 LXC 补丁中强制选中的越权语句
           sed -i '/select CFS_BANDWIDTH/d' utils/Kconfig
           sed -i '/select DOCKER_STATISTICS/d' utils/Kconfig
@@ -93,6 +97,7 @@ jobs:
           # 在 defconfig 显式禁用会引发代码冲突的调度器特性
           echo "# CONFIG_CFS_BANDWIDTH is not set" >> $DEFCONFIG
           echo "# CONFIG_DOCKER_STATISTICS is not set" >> $DEFCONFIG
+
           # 禁用偏执网络
           sed -i '/CONFIG_ANDROID_PARANOID_NETWORK/d' $DEFCONFIG
           echo "# CONFIG_ANDROID_PARANOID_NETWORK is not set" >> $DEFCONFIG
@@ -100,10 +105,12 @@ jobs:
           # 显式禁用发生冲突的 Block 特性
           echo "# CONFIG_BLK_DEV_THROTTLING is not set" >> $DEFCONFIG
           echo "# CONFIG_CFQ_GROUP_IOSCHED is not set" >> $DEFCONFIG
+
           # 修复内核源码自带的 QVR 设备树语法错误 (sdm845)
           sed -i '/sdm845-v2-qvr-evt.dtb/d' arch/arm64/boot/dts/qcom/Makefile
           sed -i '/qvr/d' arch/arm64/boot/dts/qcom/Makefile
           sed -i '/interposer/d' arch/arm64/boot/dts/qcom/Makefile
+
           # 统一在此处应用 runc 补丁和 qtaguid 补丁
           chmod +x utils/runcpatch.sh
           if [ -f kernel/cgroup/cgroup.c ]; then
@@ -115,7 +122,8 @@ jobs:
           if [ -f net/netfilter/xt_qtaguid.c ]; then
               patch -p0 < utils/xt_qtaguid.patch
           fi
-      # ---------- 新增修复步骤 ----------
+
+      # ---------- 修复触摸屏驱动 ----------
       - name: 修复触摸屏驱动中的函数原型 (添加 void)
         working-directory: kernel
         run: |
@@ -128,45 +136,70 @@ jobs:
           else
             echo "警告：$FILE 不存在，跳过"
           fi
-      - name: 从 LineageOS 同步完整设备树目录
+
+      # ---------- 从 LineageOS 同步正确设备树 ----------
+      - name: 清理旧设备树并准备新目录
         working-directory: kernel
         run: |
-          # 基础路径
+          cd arch/arm64/boot/dts/qcom
+          # 删除可能引起冲突的旧文件
+          rm -f raphael-pinctrl.dtsi raphael-sm8150.dtsi raphael-sm8150-camera-sensor.dtsi raphael-audio-overlay.dtsi
+          # 创建所需的子目录
+          mkdir -p xiaomi/overlay/raphael xiaomi/overlay/common
+
+      - name: 下载 LineageOS 设备树文件
+        working-directory: kernel/arch/arm64/boot/dts/qcom
+        run: |
           BASE_URL="https://raw.githubusercontent.com/LineageOS/android_kernel_xiaomi_sm8150/lineage-22.2"
-          DTS_BASE="arch/arm64/boot/dts/qcom"
           
-          # 创建 raphael 和 common 目录
-          mkdir -p $DTS_BASE/xiaomi/overlay/raphael
-          mkdir -p $DTS_BASE/xiaomi/overlay/common
-          
-          # 下载 raphael 目录下的文件
-          echo "下载 raphael 设备树文件..."
-          curl -L -o $DTS_BASE/xiaomi/overlay/raphael/raphael-pinctrl.dtsi \
+          # 下载 raphael 相关文件到正确子目录
+          curl -L -o xiaomi/overlay/raphael/raphael-pinctrl.dtsi \
             "$BASE_URL/arch/arm64/boot/dts/qcom/xiaomi/overlay/raphael/raphael-pinctrl.dtsi"
-          curl -L -o $DTS_BASE/xiaomi/overlay/raphael/raphael-sm8150.dtsi \
+          curl -L -o xiaomi/overlay/raphael/raphael-sm8150.dtsi \
             "$BASE_URL/arch/arm64/boot/dts/qcom/xiaomi/overlay/raphael/raphael-sm8150.dtsi"
-          curl -L -o $DTS_BASE/xiaomi/overlay/raphael/raphael-sm8150-camera-sensor.dtsi \
+          curl -L -o xiaomi/overlay/raphael/raphael-sm8150-camera-sensor.dtsi \
             "$BASE_URL/arch/arm64/boot/dts/qcom/xiaomi/overlay/raphael/raphael-sm8150-camera-sensor.dtsi"
-          curl -L -o $DTS_BASE/xiaomi/overlay/raphael/raphael-audio-overlay.dtsi \
+          curl -L -o xiaomi/overlay/raphael/raphael-audio-overlay.dtsi \
             "$BASE_URL/arch/arm64/boot/dts/qcom/xiaomi/overlay/raphael/raphael-audio-overlay.dtsi"
           
-          # 下载 common 目录下的通用文件（根据需要添加其他文件）
-          echo "下载通用设备树文件..."
-          curl -L -o $DTS_BASE/xiaomi/overlay/common/xiaomi-sm8150-common.dtsi \
+          # 下载通用文件
+          curl -L -o xiaomi/overlay/common/xiaomi-sm8150-common.dtsi \
             "$BASE_URL/arch/arm64/boot/dts/qcom/xiaomi/overlay/common/xiaomi-sm8150-common.dtsi"
           
-          echo "设备树同步完成。"
-          
-      # 可选：输出文件前几行用于调试 (可以保留或注释掉)
-      - name: 调试输出设备树文件内容
-        working-directory: kernel
-        run: |
-          echo "=== raphael-pinctrl.dtsi 前5行 (显示不可见字符) ==="
-          head -5 arch/arm64/boot/dts/qcom/raphael-pinctrl.dtsi | cat -A
-          echo "=== 文件类型信息 ==="
-          file arch/arm64/boot/dts/qcom/raphael-pinctrl.dtsi
-      # ---------- 修复步骤结束 ----------
+          # 如果需要其他通用文件，可在此继续添加
+          echo "设备树文件下载完成。"
 
+      - name: 创建符号链接以便顶层包含
+        working-directory: kernel/arch/arm64/boot/dts/qcom
+        run: |
+          ln -sf xiaomi/overlay/raphael/raphael-pinctrl.dtsi .
+          ln -sf xiaomi/overlay/raphael/raphael-sm8150.dtsi .
+          ln -sf xiaomi/overlay/raphael/raphael-sm8150-camera-sensor.dtsi .
+          ln -sf xiaomi/overlay/raphael/raphael-audio-overlay.dtsi .
+          echo "符号链接创建完成。"
+
+      - name: 确保 Makefile 包含 Raphael 设备树
+        working-directory: kernel/arch/arm64/boot/dts/qcom
+        run: |
+          # 如果文件中没有 raphael 相关条目，则添加
+          if ! grep -q "raphael-sm8150-overlay.dtbo" Makefile; then
+            echo "dtb-\$(CONFIG_ARCH_SM8150) += xiaomi/overlay/raphael/raphael-sm8150-overlay.dtbo" >> Makefile
+          fi
+          # 同时确保子目录被包含（通常 Makefile 会自动递归，但保险起见）
+          if ! grep -q "xiaomi/overlay/raphael" Makefile; then
+            echo "subdir-y += xiaomi/overlay/raphael" >> Makefile
+          fi
+          echo "Makefile 更新完成。"
+
+      - name: 验证关键文件内容
+        working-directory: kernel/arch/arm64/boot/dts/qcom
+        run: |
+          echo "当前 raphael-pinctrl.dtsi 前5行："
+          head -5 raphael-pinctrl.dtsi | cat -A
+          echo "当前 raphael-sm8150.dtsi 前5行："
+          head -5 raphael-sm8150.dtsi | cat -A
+
+      # ---------- 编译 ----------
       - name: 编译
         working-directory: kernel
         run: |
@@ -184,6 +217,8 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             raphael_defconfig all
+
+      # ---------- 打包 ----------
       - name: 打包(AnyKernel3)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3 --depth=1 ak3
@@ -204,6 +239,7 @@ jobs:
           flash_boot
           EOF
           zip -qr9 Anykernel3-${{ matrix.device }}.zip * -x .git .github README.md *placeholder
+
       - name: 打包(boot)
         run: |
           git clone https://android.googlesource.com/platform/system/tools/mkbootimg --depth=1 mkbootimg
@@ -214,6 +250,7 @@ jobs:
           mkbootimg_args=$(./unpack_bootimg.py --out out --boot_img boot.img --format mkbootimg)
           mv Image.gz-dtb out/kernel
           eval "./mkbootimg.py $mkbootimg_args -o boot-lineage-${{ matrix.device }}.img"
+
       - name: 上传文件
         uses: actions/upload-artifact@v5
         with:
@@ -244,6 +281,7 @@ jobs:
         run: |
           echo "time=$(TZ='Asia/Shanghai' date -u +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
           echo "timestamp=$(date +%s)" >> $GITHUB_OUTPUT
+
       - name: 下载ci管理器
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v11
