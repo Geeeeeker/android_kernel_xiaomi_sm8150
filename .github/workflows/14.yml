@@ -123,6 +123,45 @@ jobs:
               patch -p0 < utils/xt_qtaguid.patch
           fi
 
+      # ---------- 新增修复步骤 ----------
+      - name: 修复触摸屏驱动中的函数原型 (添加 void)
+        working-directory: kernel
+        run: |
+          FILE="drivers/input/touchscreen/xiaomi/xiaomi_touch.c"
+          if [ -f "$FILE" ]; then
+            echo "正在修复 $FILE 中的函数原型..."
+            sed -i 's/^struct class \*get_xiaomi_touch_class()/struct class *get_xiaomi_touch_class(void)/' "$FILE"
+            sed -i 's/^struct device \*get_xiaomi_touch_dev()/struct device *get_xiaomi_touch_dev(void)/' "$FILE"
+            echo "修复完成。"
+          else
+            echo "警告：$FILE 不存在，跳过"
+          fi
+
+      - name: 修复设备树文件编码 (移除 BOM / 转换为 Unix 格式)
+        working-directory: kernel
+        run: |
+          DTS_FILE="arch/arm64/boot/dts/qcom/raphael-pinctrl.dtsi"
+          if [ -f "$DTS_FILE" ]; then
+            echo "处理 $DTS_FILE ..."
+            # 移除 UTF-8 BOM (如果存在)
+            sed -i '1s/^\xEF\xBB\xBF//' "$DTS_FILE"
+            # 转换为 Unix 换行符 (dos2unix 可能未安装，使用 sed 替代)
+            sed -i 's/\r$//' "$DTS_FILE"
+            echo "已完成。"
+          else
+            echo "警告：$DTS_FILE 不存在，跳过"
+          fi
+
+      # 可选：输出文件前几行用于调试 (可以保留或注释掉)
+      - name: 调试输出设备树文件内容
+        working-directory: kernel
+        run: |
+          echo "=== raphael-pinctrl.dtsi 前5行 (显示不可见字符) ==="
+          head -5 arch/arm64/boot/dts/qcom/raphael-pinctrl.dtsi | cat -A
+          echo "=== 文件类型信息 ==="
+          file arch/arm64/boot/dts/qcom/raphael-pinctrl.dtsi
+      # ---------- 修复步骤结束 ----------
+
       - name: 编译
         working-directory: kernel
         run: |
@@ -136,6 +175,7 @@ jobs:
             LLVM=1 \
             LLVM_IAS=1 \
             O=out \
+            KCFLAGS="-Wno-error=strict-prototypes" \   # 额外保险：关闭原型警告转错误
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             raphael_defconfig all
