@@ -163,22 +163,22 @@ jobs:
       # ---------- 修复步骤结束 ----------
 
       - name: 编译
-          working-directory: kernel
-          run: |
+        working-directory: kernel
+        run: |
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
           export KBUILD_BUILD_TIMESTAMP=$(date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y")
           make -j$(nproc --all) \
-          CC="ccache clang" \
-          ARCH=arm64 \
-          LLVM=1 \
-          LLVM_IAS=1 \
-          O=out \
-          KCFLAGS="-Wno-error=strict-prototypes" \
-          CROSS_COMPILE=aarch64-linux-gnu- \
-          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-          raphael_defconfig all
+            CC="ccache clang" \
+            ARCH=arm64 \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            O=out \
+            KCFLAGS="-Wno-error=strict-prototypes" \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            raphael_defconfig all
 
       - name: 打包(AnyKernel3)
         run: |
