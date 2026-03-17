@@ -11,10 +11,6 @@ env:
   AOSP_TOOLCHAIN_BRANCH: android14        # 分支名不包含 "-release"
   AOSP_CLANG_VERSION: r487747c
 
-env:
-  AOSP_TOOLCHAIN_BRANCH: android15        # 分支名不包含 "-release"
-  AOSP_CLANG_VERSION: r498229b
-
 jobs:
   build:
     name: 编译内核
